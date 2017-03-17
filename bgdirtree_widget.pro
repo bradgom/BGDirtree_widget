@@ -112,9 +112,6 @@
 
 function listfiles,path,pattern,count=count,_extra=e    ;wrapper to avoid the file_search() slowness
   if n_elements(pattern) eq 0 then pattern='*'
-  if LMGR(/VM) or LMGR(/runtime) then begin
-    return=file_search(path+path_Sep()+pattern,/test_regular,count=count,_extra=e)   ;forced to use slow version in VM mode.
-  endif
   case strupcase(!version.os_family) of
     'WINDOWS':begin
       if STRPOS(path,path_sep(),/reverse_search) eq strlen(path)-1 then path=STRMID(path, 0,strlen(path)-1)   ;get rid of trailing slash. This happens for drive roots, but seems to always happen for other folders?
@@ -123,17 +120,16 @@ function listfiles,path,pattern,count=count,_extra=e    ;wrapper to avoid the fi
       return,file_dirname(path+path_Sep()+pattern,/mark)+result
       end
     'UNIX':begin
-      return,file_search(path+path_Sep()+pattern,/test_regular,count=count,_extra=e)   
+      if STRPOS(path,path_sep(),/reverse_search) eq strlen(path)-1 then path=STRMID(path, 0,strlen(path)-1)   ;get rid of trailing slash. This happens for drive roots, but seems to always happen for other folders?
+      spawn, "find "+path+" -maxdepth 1 -type f -name '"+pattern+"'",result $
+      count = (result[0] eq '') ? 0 : n_elements(result)
+      return,result
       end
   endcase
-
 end
 
 function listdirs,path,count=count,_extra=e   ;wrapper to avoid the file_search() slowness
 ;Path in this case is the directory to search in. the search filter is *
-  if LMGR(/VM) or LMGR(/runtime) then begin
-    return,file_search(path+'*',/test_directory,/mark,count=count,_extra=e)   ;forced to use slow version in VM mode.
-  endif
   case strupcase(!version.os_family) of
     'WINDOWS':begin
       spawn, 'dir "'+path+'" /b /aD /ON',result,/hide
@@ -141,10 +137,12 @@ function listdirs,path,count=count,_extra=e   ;wrapper to avoid the file_search(
       return, file_dirname(path+'*',/mark)+result+'\'
       end
     'UNIX':begin
-      return,file_search(path,/test_directory,/mark,count=count,_extra=e)   
+      if STRPOS(path,path_sep(),/reverse_search) ne strlen(path)-1 then path+=path_sep()
+      spawn, 'for i in $(ls -d '+path+'*/); do echo ${i%%/}; done',result
+      count = (result[0] eq '') ? 0 : n_elements(result)
+      return, result+'/'   
       end
     endcase
-
 end
 
 function BGDirTree::add,id,filter,full=full
